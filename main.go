@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"os"
@@ -127,12 +128,45 @@ func moveFile(src, dst string, mode fs.FileMode, progressChan chan<- Progress, p
 		return err
 	}
 
+	if !compareFiles(src, dst) {
+		return fmt.Errorf("CRC check failed for: %s and %s", src, dst)
+	}
+
 	err = os.Remove(src)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func compareFiles(file1, file2 string) bool {
+	f1, err := os.Open(file1)
+	if err != nil {
+		return false
+	}
+	defer f1.Close()
+
+	f2, err := os.Open(file2)
+	if err != nil {
+		return false
+	}
+	defer f2.Close()
+
+	h1 := crc32.NewIEEE()
+	h2 := crc32.NewIEEE()
+
+	_, err = io.Copy(h1, f1)
+	if err != nil {
+		return false
+	}
+
+	_, err = io.Copy(h2, f2)
+	if err != nil {
+		return false
+	}
+
+	return h1.Sum32() == h2.Sum32()
 }
 
 func copyFile(src, dst string, mode fs.FileMode, progressChan chan<- Progress, progress *Progress) error {

@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-var recursive bool
-
 type Progress struct {
 	BytesMoved int64
 	TotalBytes int64
@@ -23,18 +21,17 @@ type Progress struct {
 }
 
 func main() {
-	flag.BoolVar(&recursive, "r", false, "move directories recursively")
 	flag.Parse()
 
 	if flag.NArg() < 2 {
 		fmt.Println("Error: Too few arguments.")
-		fmt.Println("Usage: move -r /path/to/source /path/to/destination")
+		fmt.Println("Usage: move /path/to/source /path/to/destination")
 		os.Exit(1)
 	}
 
 	if flag.NArg() > 2 {
 		fmt.Println("Error: Too many arguments.")
-		fmt.Println("Usage: move -r /path/to/source /path/to/destination")
+		fmt.Println("Usage: move /path/to/source /path/to/destination")
 		os.Exit(1)
 	}
 
@@ -64,55 +61,37 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	if recursive {
-		err := filepath.Walk(source, func(srcPath string, info fs.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			relPath, err := filepath.Rel(source, srcPath)
-			if err != nil {
-				return err
-			}
-
-			dstPath := filepath.Join(destination, relPath)
-
-			if info.IsDir() {
-				return os.Mkdir(dstPath, info.Mode())
-			}
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				err := moveFile(srcPath, dstPath, info.Mode(), progressChan, &progress)
-				if err != nil {
-					fmt.Printf("Error: %s\n", err)
-					os.Exit(1)
-				}
-			}()
-
-			return nil
-		})
+	err := filepath.Walk(source, func(srcPath string, info fs.FileInfo, err error) error {
 		if err != nil {
-			fmt.Printf("Error: %s\n", err)
-			os.Exit(1)
+			return err
 		}
-	} else {
-		info, err := os.Stat(source)
+
+		relPath, err := filepath.Rel(source, srcPath)
 		if err != nil {
-			fmt.Printf("Error: %s\n", err)
-			os.Exit(1)
+			return err
+		}
+
+		dstPath := filepath.Join(destination, relPath)
+
+		if info.IsDir() {
+			return os.Mkdir(dstPath, info.Mode())
 		}
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err = moveFile(source, destination, info.Mode(), progressChan, &progress)
+			err := moveFile(srcPath, dstPath, info.Mode(), progressChan, &progress)
 			if err != nil {
 				fmt.Printf("Error: %s\n", err)
 				os.Exit(1)
 			}
 		}()
+
+		return nil
+	})
+	if err != nil {
+		fmt.Printf("Error: %s\n", err)
+		os.Exit(1)
 	}
 
 	wg.Wait()
